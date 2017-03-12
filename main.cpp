@@ -3,6 +3,7 @@
  * @brief Bigclock screensaver for xscreensaver
  * @author Martin Becker <becker@mytum.de>
  * @date 2017-03-11
+ * SDL1 version (ugly)
  */
 #ifdef __cplusplus
     #include <cstdlib>
@@ -43,7 +44,7 @@ struct config_t {
     int width;
     int height;
 };
-config_t cfg;
+static config_t cfg;
 
 /*************
  * CONSTANTS
@@ -56,13 +57,14 @@ static const unsigned int RATE_SLOW_MS = 500; ///< otherwise
 /**************
  * SDL stuff
  **************/
-SDL_Surface *screen;
-TTF_Font *fnt_dbg = NULL;
-TTF_Font *fnt_date = NULL;
-TTF_Font *fnt_time = NULL;
-TTF_Font *fnt_mode = NULL;
-SDL_Rect loc_time; ///< rectangle into which hours are drawn
-SDL_Rect loc_date; ///< rectangle into which hours are drawn
+static SDL_Surface *screen;
+static TTF_Font *fnt_dbg = NULL;
+static TTF_Font *fnt_date = NULL;
+static TTF_Font *fnt_time = NULL;
+static TTF_Font *fnt_mode = NULL;
+static SDL_Rect loc_time; ///< rectangle into which hours are drawn
+static SDL_Rect loc_date; ///< rectangle into which hours are drawn
+static SDL_Rect loc_ampm;
 
 static string _txtdbg;
 
@@ -74,7 +76,7 @@ static const char* FONT_NORM = "/usr/share/fonts/truetype/droid/DroidSans.ttf";
 static const char* FONT_DEBUG = "/usr/share/fonts/truetype/droid/DroidSans.ttf";
 
 // colors
-SDL_Color COLOR_FONT = {176,176,176};
+static SDL_Color COLOR_FONT = {176,176,176};
 static const Uint32 COLOR_BACKGROUND = 0x00000000;
 
 /**
@@ -107,7 +109,6 @@ static Uint32 check_emit(Uint32 interval, void *param) {
         e.user.data1 = NULL;
         e.user.data2 = NULL;
         SDL_PushEvent(&e);
-        printf("Time is: %d : %d\n", time_i.tm_hour, time_i.tm_min);
         past_m = time_i.tm_min;
     }
 
@@ -167,23 +168,35 @@ static int init_resources(void) {
     /* CALCULATE BACKGROUND COORDINATES */
     // to find out correct positioning, render dummy text
     const char*dummy="23:23";
-    SDL_Surface *text = TTF_RenderText_Solid(fnt_time, dummy, COLOR_FONT);    
-
-    loc_time.x = 0.5 * cfg.width - 0.5*text->w;
-    loc_time.w = text->w;
+    int w, h;
+    TTF_SizeText(fnt_time, dummy, &w, &h);
+    int dscent = abs(TTF_FontDescent(fnt_time)); // we want to subtract this space, as numbers never go below baseline
+    loc_time.w = w;
+    loc_time.h = h;
+    loc_time.x = 0.5 * cfg.width - 0.5*loc_time.w;
     if (cfg.showdate) {
-        loc_time.y = 0.47 * cfg.height - 0.5*text->h;
+        loc_time.y = 0.47 * cfg.height - 0.5*loc_time.h;
     } else {
-        loc_time.y = 0.5 * cfg.height - 0.5*text->h;
+        loc_time.y = 0.5 * cfg.height - 0.5*loc_time.h;
     }
-    loc_time.h = text->h;
+    //printf("loc_time=%d,%d,%d,%d\n", loc_time.x, loc_time.y, loc_time.w, loc_time.h);
 
+    // am/pm mark
+    loc_ampm.x = loc_time.x + loc_time.w;
+    loc_ampm.y = loc_time.y + 0.85*dscent; // guesswork to align am/pm to upper pixel of time
+    const char*dummy2="AM";    
+    TTF_SizeText (fnt_mode, dummy2, &w, &h);
+    loc_ampm.w = w;
+    loc_ampm.h = h;
+    //printf("loc_ampm=%d,%d,%d,%d\n", loc_ampm.x, loc_ampm.y, loc_ampm.w, loc_ampm.h);
     
-    
+    // date    
+    loc_date.h = TTF_FontHeight(fnt_date);
     loc_date.x = loc_time.x;
     loc_date.w = loc_time.w;
-    loc_date.y = loc_time.y + 0.9*loc_time.h;      
-    
+    int padding = 0.3*TTF_FontHeight(fnt_date);
+    loc_date.y = loc_time.y + loc_time.h - dscent + padding;
+
     SDL_AddTimer(500, check_emit, NULL); ///< call check_emit regularly
     return 0;
 }
@@ -194,16 +207,14 @@ static SDL_Rect getCoordinates(SDL_Rect * background, SDL_Surface * foreground) 
     cord.x = background->x + dx;
     int dy = (background->h - foreground->h)  * 0.5;
     cord.y = background->y + dy;
-    //printf("dx = %d : dy = %d\n", dx, dy);
-    //printf("Text Coordinates x %d : y %d\n", cord.x, cord.y);
     return cord;
 }
 
 static void draw_debug(SDL_Surface * surface) {
     if (!fnt_dbg || _txtdbg.empty()) return;
     SDL_Surface *text = TTF_RenderText_Solid(fnt_dbg, _txtdbg.c_str(), COLOR_FONT);
-    SDL_BlitSurface(text, 0, screen, NULL);    
-    SDL_Flip(surface); ///< show
+    SDL_BlitSurface(text, 0, screen, NULL);
+    SDL_FreeSurface(text);
 }
 
 /**
@@ -216,22 +227,18 @@ static void draw_divider(SDL_Surface * surface) {
     line.x = 0;
     line.y = loc_time.y + 0.48*loc_time.h; // not centered on purpose (looks better)
     SDL_FillRect(surface, &line, SDL_MapRGBA(surface->format, 0,0,0,0));
-    SDL_Flip(surface);
 }
 
 /**
  * @brief draw the little AM/PM box
  */
 static void draw_AMPM(SDL_Surface * surface, const struct tm & _time) {
-    SDL_Rect cords;
-    cords.x = 0.95*(loc_time.x);
-    cords.y = 1.25*(loc_time.y); // TODO: optimize placement
-    printf("AM/PM position\n\tx %d\n\ty %d\n", cords.x, cords.y);
+
     char mode[3];
-    strftime(mode, 3, "%p", &_time);
+    strftime(mode, sizeof(mode), "%p", &_time);
     SDL_Surface *AMPM = TTF_RenderText_Blended(fnt_mode, (const char *)mode, COLOR_FONT);
-    SDL_BlitSurface(AMPM, 0, surface, &cords);
-    SDL_Flip(surface);
+    SDL_BlitSurface(AMPM, 0, surface, &loc_ampm);
+    SDL_FreeSurface(AMPM);
 }
 
 static void draw_time(SDL_Surface *surface, const struct tm & _time) {
@@ -248,9 +255,7 @@ static void draw_time(SDL_Surface *surface, const struct tm & _time) {
         SDL_Surface *text = TTF_RenderText_Blended(fnt_time, (const char *) st, COLOR_FONT);
         coordinates = getCoordinates(&loc_time, text);
         SDL_BlitSurface(text, 0, screen, &coordinates);
-        
-        
-        SDL_Flip(surface); ///< show
+        SDL_FreeSurface(text);        
     } catch (...) {
         printf ("Problem drawing time");
     }
@@ -263,8 +268,8 @@ static void draw_date(SDL_Surface *surface, const struct tm & _time) {
         SDL_Rect coordinates;
         SDL_Surface *text = TTF_RenderText_Blended(fnt_date, datestr, COLOR_FONT);
         coordinates = getCoordinates(&loc_date, text);
-        SDL_BlitSurface(text, 0, screen, &coordinates);        
-        SDL_Flip(surface); ///< show
+        SDL_BlitSurface(text, 0, screen, &coordinates);
+        SDL_FreeSurface(text);
     } catch (...) {
         printf ("Problem drawing date");
     }
@@ -291,6 +296,7 @@ static void redraw(void) {
     
     draw_divider (screen);
     if (cfg.showdebug) draw_debug (screen);
+    SDL_Flip (screen);
 }
 
 void exit_immediately(int sig) {
@@ -307,6 +313,16 @@ static void print_usage(void) {
     printf(" -w\t\t\t\tCustom Width\n");
     printf(" -h\t\t\t\tCustom Height\n");
     printf(" -f, --font\t\t\tPath to custom file font. Has to be Truetype font.\n");
+}
+
+static void SDL_cleanup() {
+    SDL_FreeSurface(screen);
+    TTF_CloseFont(fnt_time);
+    TTF_CloseFont(fnt_mode);
+    TTF_CloseFont(fnt_dbg);
+    TTF_CloseFont(fnt_date);
+    TTF_Quit();
+    SDL_Quit();
 }
 
 static int parse_args(int argc, char** argv) {
@@ -339,15 +355,15 @@ static int parse_args(int argc, char** argv) {
             break;
         case 'w':
             customwidth = atoi(optarg);
-            printf ("Width : %d\n", customwidth);
+            //printf ("Width : %d\n", customwidth);
             break;
         case 'h':
             customheight = atoi(optarg);
-            printf ("Height: %d\n", customheight);
+            //printf ("Height: %d\n", customheight);
             break;
         case 'f':
             cfg.FONT_CUSTOM_FILE = optarg; // FIXME: is this ptr opaque to argv?
-            printf("Custom font:%s", cfg.FONT_CUSTOM_FILE);
+            //printf("Custom font:%s", cfg.FONT_CUSTOM_FILE);
             break;
         default:
             //printf("unknown option: %c ignored\n", next_option);
@@ -467,10 +483,6 @@ int main (int argc, char** argv) {
     }
 
     // cleanup & exit
-    SDL_FreeSurface(screen);
-    TTF_CloseFont(fnt_time);
-    TTF_CloseFont(fnt_mode);
-    TTF_CloseFont(fnt_dbg);
-    TTF_CloseFont(fnt_date);
+    SDL_cleanup();
     return 0;
 }
