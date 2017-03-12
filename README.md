@@ -6,7 +6,8 @@ Just that.
 No fancy stuff. 
 Really.
 
-![Alt text](/screenshots/clock.png?raw=true "Screenshot")
+![Alt text](screenshots/scrot.png?raw=true "screenshot")
+
 
 ## Installation 
 1. Install dependencies with
