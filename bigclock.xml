@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+
+<screensaver name="BigClock" _label="BigClock">
+
+  <command arg="-root"/>
+  <select id="Mode">
+    <option id="24h" _label="24h mode"/>
+    <option id="AMPM" _label="AM/PM mode"      arg-set="-ampm"/>    
+  </select>
+ 
+  <boolean id="showdate" _label="Show date" arg-set="-date"/>
+  <boolean id="showdbg" _label="Show debug info" arg-set="-debug"/>
+
+  <_description>
+A minimalist large digital clock on your screen. Optionally with date.
+
+Written by Martin Becker; 2017.
+ </_description>
+</screensaver>
