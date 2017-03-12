@@ -1,8 +1,8 @@
 CC=g++
-CXXFLAGS=`sdl-config --cflags`
-CXXFLAGS+=-Wall
-LDFLAGS=`sdl-config --libs`
-LDFLAGS+=-lX11 -lSDL_ttf -lSDL_gfx
+CXXFLAGS=`sdl2-config --cflags`
+CXXFLAGS+=-Wall -g
+LDFLAGS=`sdl2-config --libs`
+LDFLAGS+=-lX11 -lSDL2_ttf -lSDL2_gfx
 EXE=bigclock
 SRC=main.cpp
 
